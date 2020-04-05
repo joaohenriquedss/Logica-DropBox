@@ -1,0 +1,65 @@
+/--
+
+Nesse arquivo modaleramos que apenas um usuário pode editar um arquivo por vez, 
+os comandos a serem usados são 
+`
+NuSMV -int 
+read_model -i <arquivosParalalelos.smv> 
+go {equivalente de flatten_hierarchy, build.... etc}
+process_model { Executa as checagens LTLSPECS }
+print_reachable_states -v { deve listar os possíveis estados de execução }
+`
+
+--/
+
+MODULE main
+VAR
+   user_1 : {ready, looking, editing};
+   user_2 : {ready, looking, editing};
+   archive : {busy, waiting};
+   write_access  : {denied,accept};
+ASSIGN
+
+   init(archive) := waiting;
+   init(write_access) := accept;
+   init(user_1) := ready; 
+   init(user_2) := ready;
+
+   next(user_1) := case
+       (user_2 in {looking, ready})  : {looking, ready};
+       (user_2 = ready)              : {looking, ready, editing};
+       TRUE : {ready};
+   esac;
+
+   next(user_2) := case
+       (user_1 in {looking, ready})  : {looking, ready};
+       (user_1 = ready)              : {looking, ready, editing};
+       TRUE : {ready};
+   esac;
+
+   next(archive) := case
+       (user_1 = ready) & (user_2 = ready): waiting;
+       TRUE : {busy}; 
+   esac;
+
+   next(write_access) := case
+       (user_1 = editing) & (user_2 = ready) : accept;
+       (user_2 = editing) & (user_1 = ready) : accept; 
+       TRUE : denied; 
+   esac;
+
+-- Checagens
+    -- G (exp) --> exp é válida em qualquer trace
+    -- F (exp) --> exp é válido em algum momento na execução do programa
+    -- Se nenhum dos usuários estão editando o arquivo, então nenhuma permissão de escrita foi dada e arquivo pode estar ocupado (leitura, ou não)
+    LTLSPEC G(F(!(user_1 = editing) & !(user_2 = editing) -> (write_access = denied) & (archive in {busy, waiting})));
+
+    -- Se o Usuário 1 estiver editando o arquivo, então o usuário 2 não pode estar acessando e uma permissão de escrita foi emitida.
+    --LTLSPEC G(F((user_1 = editing) -> (user_2 = ready) & (write_access = accept) & (archive = busy)));
+    --LTLSPEC G(F((user_1 = editing) -> (user_2 = editing) & (write_access = denied) & (archive = busy)));
+
+--    LTLSPEC G(F((user_2 = editing & (user_1 = looking|ready) & (archive = busy|waiting))->(write_access = accept)));
+
+-- -- write_accesso paralelo negado dos arquivos
+--    LTLSPEC G(F((user_1 = editing & user_2 = editing & (archive = busy|archive = waiting))->(write_access = denied)));
+--    LTLSPEC G(F((user_2 = editing & user_1 = editing & archive = busy)->(write_access = denied)));

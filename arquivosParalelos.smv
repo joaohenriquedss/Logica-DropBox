@@ -1,0 +1,53 @@
+MODULE main
+VAR
+   u1: {idle, reading, editing};
+   u2: {idle, reading, editing};
+   req_to_edit: {none, u1_req, u2_req};
+   granted_perm: {none, u1_perm, u2_perm};
+ASSIGN
+   init(u1) := idle; 
+   init(u2) := idle; 
+   init(req_to_edit) := none;
+   init(granted_perm) := none;
+
+   next(u1) := case
+        granted_perm = u1_perm : editing;
+       TRUE : {idle, reading};
+   esac;
+
+   next(u2) := case
+        granted_perm = u2_perm : editing;
+       TRUE : {idle, reading};
+   esac;
+
+   next(req_to_edit) := case 
+        (req_to_edit = none) & (granted_perm = none) & (u1 = reading) : {u1_req};
+        (req_to_edit = none) & (granted_perm = none) & (u2 = reading) : {u2_req};
+        TRUE: none;
+   esac;
+
+   next(granted_perm) := case 
+        (req_to_edit = u1_req) : u1_perm;
+        (req_to_edit = u2_req) : u2_perm; 
+        (granted_perm = u1_perm) | (granted_perm = u2_perm): none;
+        (req_to_edit = none) : none;
+        TRUE: {u1_perm, u2_perm, none};
+   esac;
+
+-- Checagens 
+    -- Nunca será possível que os dois usuarios estejam editando ao mesmo tempo
+   LTLSPEC G(u1=editing -> u2!=editing)
+   LTLSPEC G(u2=editing -> u1!=editing)
+   -- Sanity check - Deve falhar
+   -- LTLSPEC G(u2=editing & u1=editing)
+
+   -- Em algum momento ambos os usuários podem ler o mesmo arquivo. 
+   LTLSPEC G(F(u2=reading -> u1=reading))
+
+   -- Se usuário está editando arquivo, se e somente se, ele teve permissão no passo anterior
+   LTLSPEC G(u1=editing <-> Y(granted_perm=u1_perm))
+   LTLSPEC G(u2=editing <-> Y(granted_perm=u2_perm))
+
+   -- Se usuário tem permissão, se e somente se, ele pediu permissão de edição do arquivo no passo anterior
+   LTLSPEC G(granted_perm=u1_perm <-> Y(req_to_edit=u1_req))
+   LTLSPEC G(granted_perm=u2_perm <-> Y(req_to_edit=u2_req))
